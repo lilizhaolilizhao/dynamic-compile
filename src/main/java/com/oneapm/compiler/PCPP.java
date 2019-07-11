@@ -1,13 +1,6 @@
 package com.oneapm.compiler;
 
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.Reader;
-import java.io.StreamTokenizer;
-import java.io.Writer;
+import java.io.*;
 import java.util.*;
 
 /**
@@ -15,21 +8,33 @@ import java.util.*;
  *
  * @author Kenneth B. Russell (original author)
  * @author A. Sundararajan (changes documented below)
- *
+ * <p>
  * Changes:
- *
- *     * Changed the package name.
- *     * Formatted with NetBeans.
- *     * Removed preservation of #define directives. commented #defines emission.
- *     * Commented out printing of line directives.
- *     * Print space char in output only for word tokens. This way multicharacter
- *       operators such as ==, != etc. are property printed.
- *
+ * <p>
+ * * Changed the package name.
+ * * Formatted with NetBeans.
+ * * Removed preservation of #define directives. commented #defines emission.
+ * * Commented out printing of line directives.
+ * * Print space char in output only for word tokens. This way multicharacter
+ * operators such as ==, != etc. are property printed.
  */
 public class PCPP {
 
     private static final boolean disableDebugPrint = true;
     private final Printer printer;
+    /**
+     * Map containing the results of #define statements. We must
+     * evaluate certain very simple definitions.  Macros and multi-f defines (which typically
+     * contain either macro definitions or expressions) are currently
+     * not handled.
+     */
+    private Map/*<String, String>*/ defineMap = new HashMap();
+    private Set/*<String>*/ nonConstantDefines = new HashSet();
+    /**
+     * List containing the #include paths as Strings
+     */
+    private List/*<String>*/ includePaths;
+    private ParseState state;
 
     public PCPP(List/*<String>*/ includePaths) {
         this.includePaths = includePaths;
@@ -39,39 +44,6 @@ public class PCPP {
     public PCPP(List/*<String>*/ includePaths, Writer out) {
         this.includePaths = includePaths;
         printer = new Printer(out);
-    }
-
-    public void run(Reader reader, String filename) throws IOException {
-        StreamTokenizer tok = null;
-        BufferedReader bufReader = null;
-        if (reader instanceof BufferedReader) {
-            bufReader = (BufferedReader) reader;
-        } else {
-            bufReader = new BufferedReader(reader);
-        }
-        tok = new StreamTokenizer(new ConcatenatingReader(bufReader));
-        tok.resetSyntax();
-        tok.wordChars('a', 'z');
-        tok.wordChars('A', 'Z');
-        tok.wordChars('0', '9');
-        tok.wordChars('_', '_');
-        tok.wordChars('.', '.');
-        tok.wordChars(128 + 32, 255);
-        tok.whitespaceChars(0, ' ');
-        tok.quoteChar('"');
-        tok.quoteChar('\'');
-        tok.eolIsSignificant(true);
-        tok.slashSlashComments(true);
-        tok.slashStarComments(true);
-        ParseState curState = new ParseState(tok, filename);
-        ParseState oldState = state;
-        state = curState;
-        lineDirective();
-        parse();
-        state = oldState;
-        if (state != null) {
-            lineDirective();
-        }
     }
 
     @SuppressWarnings("DefaultCharset")
@@ -115,19 +87,6 @@ public class PCPP {
         }
     }
 
-    public String findFile(String filename) {
-        String sep = File.separator;
-        for (Iterator iter = includePaths.iterator(); iter.hasNext();) {
-            String inclPath = (String) iter.next();
-            String fullPath = inclPath + sep + filename;
-            File file = new File(fullPath);
-            if (file.exists()) {
-                return fullPath;
-            }
-        }
-        return null;
-    }
-
     //----------------------------------------------------------------------
     // Internals only below this point
     //
@@ -138,70 +97,61 @@ public class PCPP {
         System.out.println("by passing '-' as the argument.");
         System.exit(1);
     }
-    /** Map containing the results of #define statements. We must
-    evaluate certain very simple definitions.  Macros and multi-f defines (which typically
-    contain either macro definitions or expressions) are currently
-    not handled. */
-    private Map/*<String, String>*/ defineMap = new HashMap();
-    private Set/*<String>*/ nonConstantDefines = new HashSet();
-    /** List containing the #include paths as Strings */
-    private List/*<String>*/ includePaths;
 
-    // State
-    static class ParseState {
-
-        private StreamTokenizer tok;
-        private String filename;
-        // We do not generate #line directives
-        // private int lineNumber;
-        private boolean startOfLine;
-        private boolean startOfFile;
-
-        ParseState(StreamTokenizer tok, String filename) {
-            this.tok = tok;
-            this.filename = filename;
-            // We do not generate #line directives
-            // lineNumber = 1;
-            startOfLine = true;
-            startOfFile = true;
+    public void run(Reader reader, String filename) throws IOException {
+        StreamTokenizer tok = null;
+        BufferedReader bufReader = null;
+        if (reader instanceof BufferedReader) {
+            bufReader = (BufferedReader) reader;
+        } else {
+            bufReader = new BufferedReader(reader);
         }
-
-        StreamTokenizer tok() {
-            return tok;
-        }
-
-        String filename() {
-            return filename;
-        }
-
-        int lineNumber() {
-            return tok.lineno();
-        }
-
-        boolean startOfLine() {
-            return startOfLine;
-        }
-
-        void setStartOfLine(boolean val) {
-            startOfLine = val;
-        }
-
-        boolean startOfFile() {
-            return startOfFile;
-        }
-
-        void setStartOfFile(boolean val) {
-            startOfFile = val;
+        tok = new StreamTokenizer(new ConcatenatingReader(bufReader));
+        tok.resetSyntax();
+        tok.wordChars('a', 'z');
+        tok.wordChars('A', 'Z');
+        tok.wordChars('0', '9');
+        tok.wordChars('_', '_');
+        tok.wordChars('.', '.');
+        tok.wordChars(128 + 32, 255);
+        tok.whitespaceChars(0, ' ');
+        tok.quoteChar('"');
+        tok.quoteChar('\'');
+        tok.eolIsSignificant(true);
+        tok.slashSlashComments(true);
+        tok.slashStarComments(true);
+        ParseState curState = new ParseState(tok, filename);
+        ParseState oldState = state;
+        state = curState;
+        lineDirective();
+        parse();
+        state = oldState;
+        if (state != null) {
+            lineDirective();
         }
     }
-    private ParseState state;
+
+    public String findFile(String filename) {
+        String sep = File.separator;
+        for (Iterator iter = includePaths.iterator(); iter.hasNext(); ) {
+            String inclPath = (String) iter.next();
+            String fullPath = inclPath + sep + filename;
+            File file = new File(fullPath);
+            if (file.exists()) {
+                return fullPath;
+            }
+        }
+        return null;
+    }
 
     // Accessors
     private void pushBackToken() throws IOException {
         state.tok().pushBack();
     }
 
-    /** Equivalent to nextToken(false) */
+    /**
+     * Equivalent to nextToken(false)
+     */
     private int nextToken() throws IOException {
         return nextToken(false);
     }
@@ -370,7 +320,7 @@ public class PCPP {
                 handleInclude();
                 shouldPrint = false;
                 break;
-        // Unknown preprocessor directive (#pragma?) -- ignore
+            // Unknown preprocessor directive (#pragma?) -- ignore
             default:
                 break;
         }
@@ -402,7 +352,7 @@ public class PCPP {
                         name + "\", at \"" + filename() + "\" line " + lineNumber() +
                         ": \"" + name + "\" was not previously defined");
             } else {
-            // System.err.println("UNDEFINED: '" + name + "'  (line " + lineNumber() + " file " + filename() + ")");
+                // System.err.println("UNDEFINED: '" + name + "'  (line " + lineNumber() + " file " + filename() + ")");
             }
             nonConstantDefines.remove(name);
         } else {
@@ -438,7 +388,7 @@ public class PCPP {
                 // We don't want to emit the define, because it would serve no purpose
                 // and cause GlueGen errors (confuse the GnuCParser)
                 emitDefine = false;
-            //System.out.println("//---DEFINED: " + name + "to \"\"");
+                //System.out.println("//---DEFINED: " + name + "to \"\"");
             } else if (sz == 1) {
                 // See whether the value is a constant
                 String value = (String) values.get(0);
@@ -450,7 +400,7 @@ public class PCPP {
                         System.err.println("WARNING: \"" + name + "\" redefined from \"" +
                                 oldDef + "\" to \"" + value + "\"");
                     }
-                //System.out.println("//---DEFINED: " + name + " to \"" + value + "\"");
+                    //System.out.println("//---DEFINED: " + name + " to \"" + value + "\"");
                 } else {
                     // Value is a symbolic constant like "#define FOO BAR".
                     // Try to look up the symbol's value
@@ -496,7 +446,7 @@ public class PCPP {
                 // Print name and value
                 printer.print("# define ");
                 printer.print(name);
-                for (Iterator iter = values.iterator(); iter.hasNext();) {
+                for (Iterator iter = values.iterator(); iter.hasNext(); ) {
                     printer.print(" ");
                     printer.print((String) iter.next());
                 }
@@ -505,7 +455,7 @@ public class PCPP {
 
         } // end if (enabled())
 
-    //System.err.println("OUT HANDLE_DEFINE: " + name);
+        //System.err.println("OUT HANDLE_DEFINE: " + name);
     }
 
     private boolean isConstant(String s) {
@@ -556,12 +506,9 @@ public class PCPP {
         return lastWord;
     }
 
-    ////////////////////////////////////////////////
-    // Handling of #if/#ifdef/ifndef/endif directives //
-    ////////////////////////////////////////////////
     /**
      * @param isIfdef if true, we're processing #ifdef; if false, we're
-     * processing #ifndef.
+     *                processing #ifndef.
      */
     private void handleIfdef(boolean isIfdef) throws IOException {
         // Next token is the name of the #ifdef
@@ -572,7 +519,13 @@ public class PCPP {
         printer.pushEnableBit(printer.enabled() && symbolIsDefined == isIfdef);
     }
 
-    /** Handles #else directives */
+    ////////////////////////////////////////////////
+    // Handling of #if/#ifdef/ifndef/endif directives //
+    ////////////////////////////////////////////////
+
+    /**
+     * Handles #else directives
+     */
     private void handleElse() throws IOException {
         boolean enabledStatusBeforeElse = printer.enabled();
         printer.popEnableBit();
@@ -591,7 +544,7 @@ public class PCPP {
 
     /**
      * @param isIf if true, we're processing #if; if false, we're
-     * processing #elif.
+     *             processing #elif.
      */
     private void handleIf(boolean isIf) throws IOException {
         //System.out.println("IN HANDLE_" + (isIf ? "IF" : "ELIF") + " file \"" + filename() + " line " + lineNumber());
@@ -601,19 +554,18 @@ public class PCPP {
             printer.popEnableBit();
         }
         printer.pushEnableBit(printer.enabled() && defineEvaluatedToTrue == isIf);
-    //System.out.println("OUT HANDLE_" + (isIf ? "IF" : "ELIF") +" (evaluated to " + defineEvaluatedToTrue + ")");
+        //System.out.println("OUT HANDLE_" + (isIf ? "IF" : "ELIF") +" (evaluated to " + defineEvaluatedToTrue + ")");
     }
 
-    //static int tmp = -1;
     /**
      * This method is called recursively to process nested sub-expressions such as:
      * <pre>
      *   #if !defined(OPENSTEP) && !(defined(NeXT) || !defined(NeXT_PDO))
-     *</pre>
+     * </pre>
      *
      * @param greedy if true, continue evaluating sub-expressions until EOL is
-     * reached. If false, return as soon as the first sub-expression is
-     * processed.
+     *               reached. If false, return as soon as the first sub-expression is
+     *               processed.
      * @return the value of the sub-expression or (if greedy==true)
      * series of sub-expressions.
      */
@@ -638,100 +590,93 @@ public class PCPP {
                     --openParens;
                     //System.out.println("OPEN PARENS = " + openParens);
                     break;
-                case '!':
-                     {
-                        //System.out.println("HANDLE_IF_RECURSIVE HANDLING !");
-                        boolean rhs = handleIfRecursive(false);
-                        ifValue = !rhs;
+                case '!': {
+                    //System.out.println("HANDLE_IF_RECURSIVE HANDLING !");
+                    boolean rhs = handleIfRecursive(false);
+                    ifValue = !rhs;
                     //System.out.println("HANDLE_IF_RECURSIVE HANDLED OUT !, RHS = " + rhs);
-                    }
-                    break;
-                case '&':
-                     {
-                        nextRequiredToken('&');
-                        //System.out.println("HANDLE_IF_RECURSIVE HANDLING &&, LHS = " + ifValue);
-                        boolean rhs = handleIfRecursive(true);
-                        //System.out.println("HANDLE_IF_RECURSIVE HANDLED &&, RHS = " + rhs);
-                        ifValue = ifValue && rhs;
-                    }
-                    break;
-                case '|':
-                     {
-                        nextRequiredToken('|');
-                        //System.out.println("HANDLE_IF_RECURSIVE HANDLING ||, LHS = " + ifValue);
-                        boolean rhs = handleIfRecursive(true);
-                        //System.out.println("HANDLE_IF_RECURSIVE HANDLED ||, RHS = " + rhs);
-                        ifValue = ifValue || rhs;
-                    }
-                    break;
-                case '>':
-                     {
-                        // NOTE: we don't handle expressions like this properly
-                        boolean rhs = handleIfRecursive(true);
-                        ifValue = false;
-                    }
-                    break;
-                case '<':
-                     {
-                        // NOTE: we don't handle expressions like this properly
-                        boolean rhs = handleIfRecursive(true);
-                        ifValue = false;
-                    }
-                    break;
-                case '=':
-                     {
-                        // NOTE: we don't handle expressions like this properly
-                        boolean rhs = handleIfRecursive(true);
-                        ifValue = false;
-                    }
-                    break;
-                case StreamTokenizer.TT_WORD:
-                     {
-                        String word = curTokenAsString();
-                        if (word.equals("defined")) {
-                            // Handle things like #if defined(SOMESYMBOL)
-                            nextRequiredToken('(');
-                            String symbol = nextWord();
-                            boolean isDefined = defineMap.get(symbol) != null;
-                            //System.out.println("HANDLE_IF_RECURSIVE HANDLING defined(" + symbol + ") = " + isDefined);
-                            ifValue = ifValue && isDefined;
-                            nextRequiredToken(')');
+                }
+                break;
+                case '&': {
+                    nextRequiredToken('&');
+                    //System.out.println("HANDLE_IF_RECURSIVE HANDLING &&, LHS = " + ifValue);
+                    boolean rhs = handleIfRecursive(true);
+                    //System.out.println("HANDLE_IF_RECURSIVE HANDLED &&, RHS = " + rhs);
+                    ifValue = ifValue && rhs;
+                }
+                break;
+                case '|': {
+                    nextRequiredToken('|');
+                    //System.out.println("HANDLE_IF_RECURSIVE HANDLING ||, LHS = " + ifValue);
+                    boolean rhs = handleIfRecursive(true);
+                    //System.out.println("HANDLE_IF_RECURSIVE HANDLED ||, RHS = " + rhs);
+                    ifValue = ifValue || rhs;
+                }
+                break;
+                case '>': {
+                    // NOTE: we don't handle expressions like this properly
+                    boolean rhs = handleIfRecursive(true);
+                    ifValue = false;
+                }
+                break;
+                case '<': {
+                    // NOTE: we don't handle expressions like this properly
+                    boolean rhs = handleIfRecursive(true);
+                    ifValue = false;
+                }
+                break;
+                case '=': {
+                    // NOTE: we don't handle expressions like this properly
+                    boolean rhs = handleIfRecursive(true);
+                    ifValue = false;
+                }
+                break;
+                case StreamTokenizer.TT_WORD: {
+                    String word = curTokenAsString();
+                    if (word.equals("defined")) {
+                        // Handle things like #if defined(SOMESYMBOL)
+                        nextRequiredToken('(');
+                        String symbol = nextWord();
+                        boolean isDefined = defineMap.get(symbol) != null;
+                        //System.out.println("HANDLE_IF_RECURSIVE HANDLING defined(" + symbol + ") = " + isDefined);
+                        ifValue = ifValue && isDefined;
+                        nextRequiredToken(')');
+                    } else {
+                        // Handle things like #if SOME_SYMBOL.
+                        String symbolValue = (String) defineMap.get(word);
+
+                        // See if the statement is "true"; i.e., a non-zero expression
+                        if (symbolValue != null) {
+                            // The statement is true if the symbol is defined and is a constant expression
+                            return (!nonConstantDefines.contains(word));
                         } else {
-                            // Handle things like #if SOME_SYMBOL.
-                            String symbolValue = (String) defineMap.get(word);
+                            // The statement is true if the symbol evaluates to a non-zero value
+                            //
+                            // NOTE: This doesn't yet handle evaluable expressions like "#if
+                            // SOME_SYMBOL > 5" or "#if SOME_SYMBOL == 0", both of which are
+                            // valid syntax. It only handles numeric symbols like "#if 1"
 
-                            // See if the statement is "true"; i.e., a non-zero expression
-                            if (symbolValue != null) {
-                                // The statement is true if the symbol is defined and is a constant expression
-                                return (!nonConstantDefines.contains(word));
-                            } else {
-                                // The statement is true if the symbol evaluates to a non-zero value
-                                //
-                                // NOTE: This doesn't yet handle evaluable expressions like "#if
-                                // SOME_SYMBOL > 5" or "#if SOME_SYMBOL == 0", both of which are
-                                // valid syntax. It only handles numeric symbols like "#if 1"
-
+                            try {
+                                // see if it's in decimal form
+                                return Double.parseDouble(word) != 0;
+                            } catch (NumberFormatException nfe1) {
                                 try {
-                                    // see if it's in decimal form
-                                    return Double.parseDouble(word) != 0;
-                                } catch (NumberFormatException nfe1) {
+                                    // ok, it's not a valid decimal value, try hex/octal value
+                                    return Long.parseLong(word) != 0;
+                                } catch (NumberFormatException nfe2) {
                                     try {
-                                        // ok, it's not a valid decimal value, try hex/octal value
-                                        return Long.parseLong(word) != 0;
-                                    } catch (NumberFormatException nfe2) {
-                                        try {
-                                            // ok, it's not a valid hex/octal value, try boolean
-                                            return Boolean.valueOf(word);
-                                        } catch (NumberFormatException nfe3) {
-                                            // give up; the symbol isn't a numeric or boolean value
-                                            return false;
-                                        }
+                                        // ok, it's not a valid hex/octal value, try boolean
+                                        return Boolean.valueOf(word);
+                                    } catch (NumberFormatException nfe3) {
+                                        // give up; the symbol isn't a numeric or boolean value
+                                        return false;
                                     }
                                 }
                             }
                         }
-                    } // end case TT_WORD
-                    break;
+                    }
+                } // end case TT_WORD
+                break;
                 case StreamTokenizer.TT_EOL:
                     //System.out.println("HANDLE_IF_RECURSIVE HIT <EOL>!");
                     pushBackToken(); // so caller hits EOL as well if we're recursing
@@ -745,12 +690,14 @@ public class PCPP {
                             ") while parsing " + "#if statement at file " + filename() +
                             ", line " + lineNumber());
             }
-        //System.out.println("END OF WHILE: greedy = " + greedy + " parens = " +openParens + " not EOL = " + (tok != StreamTokenizer.TT_EOL) + " --> " + ((greedy && openParens >= 0) && tok != StreamTokenizer.TT_EOL));
+            //System.out.println("END OF WHILE: greedy = " + greedy + " parens = " +openParens + " not EOL = " + (tok != StreamTokenizer.TT_EOL) + " --> " + ((greedy && openParens >= 0) && tok != StreamTokenizer.TT_EOL));
         } while ((greedy && openParens >= 0) && tok != StreamTokenizer.TT_EOL);
         //System.out.println("OUT HANDLE_IF_RECURSIVE (" + tmp-- + ", returning " + ifValue + ")");
         //System.out.flush();
         return ifValue;
     }
+
+    //static int tmp = -1;
 
     /////////////////////////////////////
     // Handling of #include directives //
@@ -791,7 +738,7 @@ public class PCPP {
             Reader reader = new BufferedReader(new FileReader(fullname));
             run(reader, fullname);
         } else {
-        //System.out.println("INACTIVE BLOCK, SKIPPING " + filename);
+            //System.out.println("INACTIVE BLOCK, SKIPPING " + filename);
         }
     }
 
@@ -801,7 +748,7 @@ public class PCPP {
         }
 
         if (!onlyPrintIfEnabled || (onlyPrintIfEnabled && printer.enabled())) {
-            for (int i = Printer.debugPrintIndentLevel; --i > 0;) {
+            for (int i = Printer.debugPrintIndentLevel; --i > 0; ) {
                 System.out.print("  ");
             }
             System.out.println(msg + "  (line " + lineNumber() + " file " + filename() + ")");
@@ -819,5 +766,53 @@ public class PCPP {
          * print("# " + lineNumber() + " \"" + filename() + "\"");
          * println();
          */
+    }
+
+    // State
+    static class ParseState {
+
+        private StreamTokenizer tok;
+        private String filename;
+        // We do not generate #line directives
+        // private int lineNumber;
+        private boolean startOfLine;
+        private boolean startOfFile;
+
+        ParseState(StreamTokenizer tok, String filename) {
+            this.tok = tok;
+            this.filename = filename;
+            // We do not generate #line directives
+            // lineNumber = 1;
+            startOfLine = true;
+            startOfFile = true;
+        }
+
+        StreamTokenizer tok() {
+            return tok;
+        }
+
+        String filename() {
+            return filename;
+        }
+
+        int lineNumber() {
+            return tok.lineno();
+        }
+
+        boolean startOfLine() {
+            return startOfLine;
+        }
+
+        void setStartOfLine(boolean val) {
+            startOfLine = val;
+        }
+
+        boolean startOfFile() {
+            return startOfFile;
+        }
+
+        void setStartOfFile(boolean val) {
+            startOfFile = val;
+        }
     }
 }

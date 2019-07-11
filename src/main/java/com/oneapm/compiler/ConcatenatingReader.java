@@ -1,16 +1,20 @@
 package com.oneapm.compiler;
 
-import java.io.*;
+import java.io.BufferedReader;
+import java.io.FilterReader;
+import java.io.IOException;
 
 public class ConcatenatingReader extends FilterReader {
+    private static final String NEW_LINE = System.getProperty("line.separator");
+    private final BufferedReader inReader;
     // Any leftover characters go here
     private char[] curBuf;
     private int curPos;
-    private final BufferedReader inReader;
-    private static final String NEW_LINE = System.getProperty("line.separator");
 
-    /** This class requires that the input reader be a BufferedReader so
-    it can do line-oriented operations. */
+    /**
+     * This class requires that the input reader be a BufferedReader so
+     * it can do line-oriented operations.
+     */
     public ConcatenatingReader(BufferedReader in) {
         super(in);
         this.inReader = in;

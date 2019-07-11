@@ -1,4 +1,3 @@
-
 package com.oneapm.compiler;
 
 import com.oneapm.util.Messages;
@@ -13,21 +12,11 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
-/**
- * Compiler for a BTrace program. Note that a BTrace
- * program is a Java program that is specially annotated
- * and can *not* use many Java constructs (essentially java--).
- * We use JSR 199 API to compile BTrace program but validate
- * the program (for BTrace safety rules) using JSR 269 and
- * javac's Tree API.
- *
- * @author A. Sundararajan
- */
 public class Compiler {
     private final CompilerHelper compilerHelper;
-    private StandardJavaFileManager stdManager;
     // null means no preprocessing isf done.
     public List<String> includeDirs;
+    private StandardJavaFileManager stdManager;
     private String packExtension = "class";
 
     public Compiler(String includePath, boolean generatePack) {
@@ -81,7 +70,7 @@ public class Compiler {
         boolean includePathDefined = false;
         boolean trustedDefined = false;
 
-        for (;;) {
+        for (; ; ) {
             if (args[count].charAt(0) == '-') {
                 if (args.length <= count + 1) {
                     usage();
@@ -164,7 +153,7 @@ public class Compiler {
     }
 
     public Map<String, byte[]> compile(String fileName, String source,
-            Writer err, String sourcePath, String classPath) {
+                                       Writer err, String sourcePath, String classPath) {
         // create a new memory JavaFileManager
         MemoryJavaFileManager manager = new MemoryJavaFileManager(stdManager, includeDirs);
 
@@ -175,14 +164,14 @@ public class Compiler {
     }
 
     public Map<String, byte[]> compile(File file,
-            Writer err, String sourcePath, String classPath) {
+                                       Writer err, String sourcePath, String classPath) {
         File[] files = new File[1];
         files[0] = file;
         return compile(files, err, sourcePath, classPath);
     }
 
     public Map<String, byte[]> compile(File[] files,
-            Writer err, String sourcePath, String classPath) {
+                                       Writer err, String sourcePath, String classPath) {
         Iterable<? extends JavaFileObject> compUnits =
                 stdManager.getJavaFileObjects(files);
         List<JavaFileObject> preprocessedCompUnits = new ArrayList<>();
@@ -205,19 +194,8 @@ public class Compiler {
     }
 
     private Map<String, byte[]> compile(MemoryJavaFileManager manager,
-            Iterable<? extends JavaFileObject> compUnits,
-            Writer err, String sourcePath, final String classPath) {
-        // to collect errors, warnings etc.
-
-        // javac options
-
-        // create a compilation task
-
-        // we add BTrace Verifier as a (JSR 269) Processor
-
-        // print dignostics messages in case of failures.
-
-        // collect .class bytes of all compiled classes
+                                        Iterable<? extends JavaFileObject> compUnits,
+                                        Writer err, String sourcePath, final String classPath) {
         return compilerHelper.compile(manager, compUnits, err, sourcePath, classPath);
     }
 }

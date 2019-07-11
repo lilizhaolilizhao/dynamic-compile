@@ -1,15 +1,16 @@
 package com.oneapm.compiler;
 
 import com.sun.source.util.JavacTask;
-import javax.annotation.processing.Processor;
+
 import javax.tools.Diagnostic;
 import javax.tools.Diagnostic.Kind;
 import javax.tools.DiagnosticCollector;
 import javax.tools.JavaCompiler;
 import javax.tools.JavaFileObject;
-import java.io.*;
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.Writer;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -50,61 +51,22 @@ class CompilerHelper {
         }
 
         // create a compilation task
-        JavacTask task =
-                (JavacTask) compiler.getTask(err, manager, diagnostics,
-                        options, null, compUnits);
-        Verifier btraceVerifier = new Verifier();
-        task.setTaskListener(btraceVerifier);
-
-        // we add BTrace Verifier as a (JSR 269) Processor
-        List<Processor> processors = new ArrayList<>(1);
-        processors.add(btraceVerifier);
-        task.setProcessors(processors);
-
-        final PrintWriter perr = (err instanceof PrintWriter) ?
-                (PrintWriter) err :
-                new PrintWriter(err);
-
-        // print dignostics messages in case of failures.
-        if (task.call() == false || containsErrors(diagnostics)) {
-            for (Diagnostic diagnostic : diagnostics.getDiagnostics()) {
-                printDiagnostic(diagnostic, perr);
-            }
-            perr.flush();
-            return null;
-        }
-
-        // collect .class bytes of all compiled classes
-        Map<String, byte[]> result = new HashMap<>();
+        Map<String, byte[]> result;
         try {
-            Map<String, byte[]> classBytes = manager.getClassBytes();
-            List<String> classNames = btraceVerifier.getClassNames();
-            for (String name : classNames) {
-                if (classBytes.containsKey(name)) {
-//                    dump(name + "_before", classBytes.get(name));
-//                    ClassReader cr = new ClassReader(classBytes.get(name));
-//                    ClassWriter cw = new CompilerClassWriter(classPath, perr);
-//                    cr.accept(new Postprocessor(cw), ClassReader.EXPAND_FRAMES + ClassReader.SKIP_DEBUG);
-//                    byte[] classData = cw.toByteArray();
-//                    dump(name + "_after", classData);
-//                    if (generatePack) {
-//                        // temp hack; need turn off verifier
-//                        SharedSettings.GLOBAL.setTrusted(true);
-//
-//                        BTraceProbeNode bpn = (BTraceProbeNode) new BTraceProbeFactory(SharedSettings.GLOBAL).createProbe(classData);
-//                        ByteArrayOutputStream bos = new ByteArrayOutputStream();
-//                        try (DataOutputStream dos = new DataOutputStream(bos)) {
-//                            BTraceProbePersisted bpp = BTraceProbePersisted.from(bpn);
-//                            bpp.write(dos);
-//                        }
-//
-//                        classData = bos.toByteArray();
-//                    }
-//                    result.put(name, classData);
+            JavacTask task = (JavacTask) compiler.getTask(err, manager, diagnostics, options, null, compUnits);
+            final PrintWriter perr = (err instanceof PrintWriter) ? (PrintWriter) err : new PrintWriter(err);
+
+            // print dignostics messages in case of failures.
+            if (task.call() == false || containsErrors(diagnostics)) {
+                for (Diagnostic diagnostic : diagnostics.getDiagnostics()) {
+                    printDiagnostic(diagnostic, perr);
                 }
+                perr.flush();
+                return null;
             }
-        } catch (Exception e) {
-            e.printStackTrace(perr);
+
+            // collect .class bytes of all compiled classes
+            result = manager.getClassBytes();
         } finally {
             try {
                 manager.close();
@@ -112,28 +74,6 @@ class CompilerHelper {
             }
         }
         return result;
-    }
-
-    private void dump(String name, byte[] code) {
-        OutputStream os = null;
-        try {
-            name = name.replace(".", "_") + ".class";
-            File f = new File("/tmp/" + name);
-            if (!f.exists()) {
-                f.getParentFile().createNewFile();
-            }
-            os = new FileOutputStream(f);
-            os.write(code);
-        } catch (IOException e) {
-
-        } finally {
-            if (os != null) {
-                try {
-                    os.close();
-                } catch (IOException e) {
-                }
-            }
-        }
     }
 
     private void printDiagnostic(Diagnostic diagnostic, final PrintWriter perr) {
